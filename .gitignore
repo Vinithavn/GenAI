@@ -1,0 +1,7 @@
+**/.venv/*
+**.env
+input_data_files/*
+**/llm_app.db
+**/__pycache__/*
+**/.DS_Store
+**/.idea/*
