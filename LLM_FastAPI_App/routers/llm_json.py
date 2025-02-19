@@ -1,7 +1,4 @@
 from fastapi import APIRouter,File,UploadFile,Query,Depends,HTTPException
-from datetime import datetime
-
-
 from llm_utils import retrieve_generate, summarizer
 from typing import Optional,Annotated
 from llm_utils.completion import generate
@@ -12,30 +9,13 @@ from starlette import status
 from models import ChatHistory
 import shutil
 import os
-from pymongo import MongoClient
-from dotenv import load_dotenv
-from warnings import filterwarnings
-filterwarnings("ignore")
+import json
 
-load_dotenv()
+from utils import load_chat_history
 
 router = APIRouter(prefix = "/llm",tags = ["llm"])
 
 allowed_extensions = [".pdf",".jpg",".png",".jpeg",".html",".docx"]
-
-conn_url = os.getenv('MONGO_URI')
-if conn_url is None:
-    conn_url = "mongodb://localhost:27017/"
-print(conn_url)
-
-try:
-    client = MongoClient(conn_url)
-    db = client["your_database_name"]  # Choose your database name
-    collection = db["chat_history"]  # Choose your collection name
-    print("Successfully connected to MongoDB.")
-except Exception as e:
-    print(f"Error connecting to MongoDB: {e}")
-
 
 def get_db():
     db = session_local() # Returns a new database session
@@ -43,7 +23,6 @@ def get_db():
         yield db # Yield will pause the function execution here, returning the db object to the caller
     finally:
         db.close() # Close the connection after each session
-
 
 db_dependency = Annotated[Session, Depends(get_db)]
 user_dependency = Annotated[dict,Depends(get_current_user)]
@@ -128,32 +107,14 @@ async def chat(db:db_dependency,
     user_id = user.get("id")
     chat_history_model = db.query(ChatHistory).filter(ChatHistory.user_id == user_id).first()
 
-    if chat_history_model is None:
-        print("New user")
-    else:
-        print("Existing User")
+    chat_message_history,whole_chat = load_chat_history(user_id,chat_history_model)
 
-
-    history_collection = list(collection.find(
-        {"user_id": user_id},
-        sort=[("timestamp", -1)],  # Sort by timestamp, newest first
-        limit=10
-    ))
-    if history_collection:
-        history_collection.reverse()
-        chat_message_history = " ".join([chat["role"]+":"+chat["content"]+"\n" for chat in history_collection])
-    else:
-        chat_message_history =None
-
-    print("CHAT HISTORY:",chat_message_history)
-    print("User query:",query)
-
-
+    print(chat_message_history)
     # Get the LLM response for the query with history
     llm_response = generate(chat_message_history,query,model_name)
-    print(llm_response)
-    #store the chat message information to the sqlite db
 
+    #store the chat message information to the sqlite db
+    chat_message_history+="AI:"+llm_response+"\n"
     chat_history_model_new = ChatHistory(
         user_id=user_id,
         chat_title=f"{user_id}_chat")
@@ -161,22 +122,9 @@ async def chat(db:db_dependency,
     db.commit()
 
     #Store the updated chat history to Mongodb
-    try:
-        print("Adding the user query to collection")
-        collection.insert_one({
-            "user_id": user_id,
-            "timestamp": datetime.now(),
-            "role": "user",
-            "content": query
-        })
-        collection.insert_one({
-        "user_id": user_id,
-        "timestamp": datetime.now(),
-        "role": "assistant",
-        "content": llm_response  # replace with actual response.
-    })
-    except:
-       raise HTTPException(status_code=500, detail="An error occurred during chat.")
+    whole_chat[str(user_id)] = chat_message_history
+    with open("chat_history.json", 'w') as file:
+        json.dump(whole_chat, file, indent=4)
 
     return llm_response
 

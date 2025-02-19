@@ -14,5 +14,7 @@ class Users(Base):
 class ChatHistory(Base):
     __tablename__ = "chathistory"
     id = Column(Integer,primary_key=True,index=True)
-    chat = Column(String)
-    owner_id = Column(Integer,ForeignKey("users.id"))
+    user_id = Column(Integer)
+    chat_title = Column(String)
+
+

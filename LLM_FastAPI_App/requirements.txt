@@ -13,3 +13,5 @@ passlib
 sqlalchemy
 bcrypt
 python-jose
+langchain-mongodb
+pymongo 
