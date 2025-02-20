@@ -33,6 +33,7 @@ try:
     client = MongoClient(conn_url)
     db = client["your_database_name"]  # Choose your database name
     collection = db["chat_history"]  # Choose your collection name
+    collection.create_index([("user_id", 1)]) #Creating an index for user_id for faster search. 1 indicate the sort in ascending order
     print("Successfully connected to MongoDB.")
 except Exception as e:
     print(f"Error connecting to MongoDB: {e}")
