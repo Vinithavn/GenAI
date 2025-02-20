@@ -5,7 +5,7 @@ from unstructured.partition.auto import partition
 from langchain_core.documents import Document 
 import shutil
 import os
-import json
+from datetime import datetime
 
 
 
@@ -93,17 +93,29 @@ def read_document(doc_path):
     loader = PyPDFLoader(doc_path)
     return loader.load()
 
-def load_chat_history(user_id,chat_history_model):
-
-    # Check if the user has any chat history
-    with open("chat_history.json", 'r') as file:
-        whole_chat = json.load(file)
-    if chat_history_model is not None:
-        print("existing user")
-        chat_message_history = whole_chat[str(user_id)]
-        print(chat_message_history)
+def get_chat_history(collection,user_id):
+    history_collection = list(collection.find(
+        {"user_id": user_id},
+        sort=[("timestamp", -1)],  # Sort by timestamp, newest first
+        limit=10
+    ))
+    if history_collection:
+        history_collection.reverse()
+        chat_message_history = " ".join([chat["role"] + ":" + chat["content"] + "\n" for chat in history_collection])
     else:
-        print("New user")
-        chat_message_history = ""
+        chat_message_history = None
+    return chat_message_history
 
-    return chat_message_history,whole_chat
+def save_chat_history(collection,user_id,query,llm_response):
+    collection.insert_one({
+        "user_id": user_id,
+        "timestamp": datetime.now(),
+        "role": "user",
+        "content": query
+    })
+    collection.insert_one({
+        "user_id": user_id,
+        "timestamp": datetime.now(),
+        "role": "assistant",
+        "content": llm_response  # replace with actual response.
+    })

@@ -5,6 +5,7 @@ from datetime import datetime
 from llm_utils import retrieve_generate, summarizer
 from typing import Optional,Annotated
 from llm_utils.completion import generate
+from utils import *
 from database import session_local
 from routers.auth import get_current_user
 from sqlalchemy.orm import Session
@@ -84,7 +85,28 @@ def ask_from_document(db:db_dependency,
     else:
         doc_path = os.listdir("input_data_files")
         complete_path = ["input_data_files/"+i for i in doc_path]
-        llm_response = retrieve_generate.ask_llm(query, complete_path, model_name)
+        user_id = user.get('id')
+        chat_history_model = db.query(ChatHistory).filter(ChatHistory.user_id == user_id).first()
+
+        if chat_history_model is None:
+            print("New user")
+        else:
+            print("Existing User")
+
+        chat_message_history = get_chat_history(collection, user_id)
+        llm_response = retrieve_generate.ask_llm(query, chat_message_history,complete_path, model_name)
+        chat_history_model_new = ChatHistory(
+            user_id=user_id,
+            chat_title=f"{user_id}_chat")
+        db.add(chat_history_model_new)
+        db.commit()
+
+        # Store the updated chat history to Mongodb
+        try:
+            print("Adding the user query to collection")
+            save_chat_history(collection, user_id, query, llm_response)
+        except:
+            raise HTTPException(status_code=500, detail="An error occurred during chat.")
         return llm_response 
     
 
@@ -133,25 +155,13 @@ async def chat(db:db_dependency,
     else:
         print("Existing User")
 
-
-    history_collection = list(collection.find(
-        {"user_id": user_id},
-        sort=[("timestamp", -1)],  # Sort by timestamp, newest first
-        limit=10
-    ))
-    if history_collection:
-        history_collection.reverse()
-        chat_message_history = " ".join([chat["role"]+":"+chat["content"]+"\n" for chat in history_collection])
-    else:
-        chat_message_history =None
+    chat_message_history = get_chat_history(collection,user_id)
 
     print("CHAT HISTORY:",chat_message_history)
     print("User query:",query)
 
-
     # Get the LLM response for the query with history
     llm_response = generate(chat_message_history,query,model_name)
-    print(llm_response)
     #store the chat message information to the sqlite db
 
     chat_history_model_new = ChatHistory(
@@ -163,32 +173,12 @@ async def chat(db:db_dependency,
     #Store the updated chat history to Mongodb
     try:
         print("Adding the user query to collection")
-        collection.insert_one({
-            "user_id": user_id,
-            "timestamp": datetime.now(),
-            "role": "user",
-            "content": query
-        })
-        collection.insert_one({
-        "user_id": user_id,
-        "timestamp": datetime.now(),
-        "role": "assistant",
-        "content": llm_response  # replace with actual response.
-    })
+        save_chat_history(collection,user_id,query,llm_response)
     except:
        raise HTTPException(status_code=500, detail="An error occurred during chat.")
 
     return llm_response
 
 
-    
-    
-'''
-A user interface where the user can chat, upload document and ask questions
-or can ask the model to summarize
-
-1. Need chat history to be saved. Load chat history of a user
-2. Need a db where we can store the username, password and history
-'''
 
     

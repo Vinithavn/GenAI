@@ -4,9 +4,10 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.vectorstores import InMemoryVectorStore
 from utils import *
 
-RAG_PROMPT = PromptTemplate.from_template("""You are an assistant for question-answering tasks. Use the following piecesofretrieved context to answer the question. If you don't know the answer, just say that you don't know. Use three sentences maximum and keep the answer concise.
+RAG_PROMPT = PromptTemplate.from_template("""You are an assistant for question-answering tasks. Use the following piecesofretrieved context to answer the question. If you don't know the answer, just say that you don't know. Use three sentences maximum and keep the answer concise. You are also provided with additional contexts regarding the user's question
 Question: {question} 
-Context: {context} 
+Context: {context}
+Additional_context :{chat_history} 
 Answer:
 """)
 
@@ -42,12 +43,13 @@ def get_retrieved_content(doc_path,query,embeddings):
 
 
 
-def ask_llm(query,doc_path,model_name):
+def ask_llm(query,history,doc_path,model_name):
     llm,embeddings = load_model(model_name)
     document_content = get_retrieved_content(doc_path,query,embeddings)
     rag_chain = RAG_PROMPT|llm|StrOutputParser()
     output = rag_chain.invoke({"question":query,
-                      "context":document_content})
+                               "context":document_content,
+                               'chat_history':history})
     if llm is not None:
         return output
     else:
